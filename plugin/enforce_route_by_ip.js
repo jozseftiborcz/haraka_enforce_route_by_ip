@@ -1,10 +1,5 @@
 // enforce_route_by_ip
-
-// documentation via: haraka -c /home/joe/work/haraka_test -h plugins/enforce_route_by_ip
-
-// Put your plugin code here
-// type: `haraka -h Plugins` for documentation on how to create a plugin
-
+//
 exports.register = function() {
     var plugin = this;
 
@@ -38,14 +33,21 @@ exports.load_rules = function() {
         });
     })
 
-    plugin.rcpt_tos = {};
+    plugin.rcpt_to_addrs = {};
+    plugin.rcpt_to_domains = {};
     var email_addr;
     Object.keys(plugin.cfg.rcpt_to).forEach(function(email_addr) {
         if (!email_addrs.hasOwnProperty(email_addr))
             plugin.logwarn('rcpt_to', email_addr + " is missing from domain definition, skipping");
         else { 
-            plugin.rcpt_tos[email_addr] = plugin.cfg.rcpt_to[email_addr].split(',').map(function(val) { 
+            plugin.rcpt_to_addrs[email_addr] = plugin.cfg.rcpt_to[email_addr].split(',').map(function(val) { 
                 return val.trim();
+            });
+
+            plugin.rcpt_to_domains[email_addr] = [];
+            plugin.rcpt_to_addrs[email_addr] = plugin.rcpt_to_addrs[email_addr].filter(function(addr) {
+                if (exports.is_domain(addr)) plugin.rcpt_to_domains[email_addr].push(addr);
+                return !exports.is_domain(addr);
             });
             delete email_addrs[email_addr];
         }
@@ -55,12 +57,21 @@ exports.load_rules = function() {
     }
 };
 
+exports.is_domain = function(email_addr) {
+    return email_addr.indexOf('@')==-1;
+};
+
+exports.get_domain = function(email_addr) {
+    return email_addr.replace(/.*@/,"");
+};
+
 exports.hook_connect = function(next, connection) {
     var plugin = this;
+    var ip = connection.remote_ip;
 
-    if (!plugin.source_ips[connection.remote_ip]) {
-        next(DENY,connection.remote_ip + ' is not authorized');
-        plugin.logerror(connection.remote_ip + ' is not authorized');
+    if (!plugin.source_ips[ip] && plugin.strict_mode==='yes') {
+        next(DENY,ip + ' is not authorized');
+        plugin.logerror(ip + ' is not authorized');
     }
     else {
         next();
@@ -69,22 +80,35 @@ exports.hook_connect = function(next, connection) {
 
 exports.hook_rcpt = function(next, connection, to) {
     var plugin = this;
+    var addr = to[0].address();
+    var ip = connection.remote_ip;
+    var mail_from = connection.transaction.mail_from.original;
 
-    if (plugin.rcpt_tos[connection.remote_ip].indexOf(to[0].address())==-1) {
-        next(DENY, to[0].address() + " is not allowed recepient " + connection.remote_ip);
-        plugin.logerror(to[0].address() + " is not allowed recepient " + connection.remote_ip);
+    debugger;
+    if (plugin.rcpt_to_addrs[mail_from].indexOf(addr) !== -1 ||  
+        plugin.rcpt_to_domains[mail_from].indexOf(exports.get_domain(addr)) !== -1) {
+        next(OK);
         return;
     }
-    next(OK);
+    if (plugin.strict_mode!=='yes') {
+        plugin.logerror(addr + " is not allowed recepient at " + ip);
+        next(DENY, addr + " is not allowed recepient at " + ip);
+    }
+    else {
+        next(OK);
+    }
 };
 
 exports.hook_mail = function(next, connection, from) {
     var plugin = this;
+    var ip = connection.remote_ip;
+    var addr = from[0].address();
 
-    if (plugin.source_ips[connection.remote_ip].indexOf(from[0].address())==-1) {
-        next(DENY, from[0].address() + " is not allowed from " + connection.remote_ip);
-        plugin.logerror(from[0].address() + " is not allowed from " + connection.remote_ip);
-        return;
+    if (plugin.source_ips[ip] && plugin.source_ips[ip].indexOf(addr)==-1) {
+        next(DENY, addr + " is not allowed sender at " + ip);
+        plugin.logerror(addr + " is not allowed sender at " + ip);
     }
-    next();
+    else {
+        next();
+    }
 };
