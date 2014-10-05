@@ -12,7 +12,9 @@ There is two option: elevate SAP server's trust level to that of Active Director
 
 ## Example setup
 
-Suppose we have two servers (server1 and server2) both hosting services not able to authenticate against AD. Server1 has to send email with noreply-app@example.com to example.com addresses while server2 has to send emails with nessus@example.com and syslog@example.com mails from to infosec@example.com. The network setup is like this:
+Suppose we have two servers (server1 and server2) both hosting services not able to authenticate against AD. 
+Server1 has to send emails from noreply-app@example.com to example.com while server2 has to send 
+emails from nessus@example.com or syslog@example.com to infosec@example.com. The network setup is like this:
 
     server1 (192.168.100.1) ------+
                                   |----> haraka (192.168.100.200) ----> AD (192.168.10.10)
@@ -23,11 +25,11 @@ Suppose we have two servers (server1 and server2) both hosting services not able
 To set up haraka for the example setup you should do the following:
 ####Create a default haraka setup with 
     haraka -i /path/to/harakatest
-####Edit ``config/plugins``
+####Edit plugins file in harakatest/config directory
     queue/smtp_proxy
     tls
     enforce_route_by_ip
-####Edit ``config/smtp_proxy.ini
+####Edit smtp_proxy.ini file in harakatest/config directory
     host=192.168.10.10
     port=25
     enable_tls=1
@@ -35,7 +37,7 @@ To set up haraka for the example setup you should do the following:
     type=plain
     user=<your Active Directory user name>
     pass=<your password>
-####Edit ``config/enforce_route_by_ip.ini``
+####Edit enforce_route_by_ip.ini file in harakatest/config directory
     [domain]
     192.168.100.1=noreply-app@example.com
     192.168.100.2=nessus@example.com, syslog@example.com
@@ -45,5 +47,5 @@ To set up haraka for the example setup you should do the following:
     nessus@example.com=infosec@example.com
     syslog@example.com=infosec@example.com
 
-By setting ``strict_mode=no`` in ``enforce_route_by_ip.ini`` the plugin will allow email exchanges which are not configured. It is an optional unsafe mode. The strict mode is set to yes be default, of course.
+By setting ``strict_mode=no`` in ``enforce_route_by_ip.ini`` the plugin will allow email exchanges for sources which are not configured. It is an optional unsafe mode. The strict mode is set to yes be default, of course.
 
