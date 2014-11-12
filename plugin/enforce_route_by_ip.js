@@ -78,15 +78,25 @@ exports.hook_connect = function(next, connection) {
     }
 };
 
+exports.allowed_rcpt_to = function(mail_from, rcpt) {
+    var plugin = this;
+    return mail_from in plugin.rcpt_to_addrs 
+        && plugin.rcpt_to_addrs[mail_from].indexOf(rcpt) !== -1;
+};
+
+exports.allowed_rcpt_domain = function(mail_from, rcpt) {
+    var plugin = this;
+    return mail_from in plugin.rcpt_to_domains && 
+        plugin.rcpt_to_domains[mail_from].indexOf(exports.get_domain(rcpt)) !== -1;
+};
+
 exports.hook_rcpt = function(next, connection, to) {
     var plugin = this;
     var addr = to[0].address();
     var ip = connection.remote_ip;
     var mail_from = connection.transaction.mail_from.original;
 
-    debugger;
-    if (plugin.rcpt_to_addrs[mail_from].indexOf(addr) !== -1 ||  
-        plugin.rcpt_to_domains[mail_from].indexOf(exports.get_domain(addr)) !== -1) {
+    if (exports.allowed_rcpt_to(mail_from, addr) || exports.allowed_rcpt_domain(mail_from, addr)) {
         next(OK);
         return;
     }
@@ -112,3 +122,4 @@ exports.hook_mail = function(next, connection, from) {
         next();
     }
 };
+

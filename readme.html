@@ -1,0 +1,42 @@
+<h2>A Haraka plugin for enforcing email route by hostname</h2>
+<p>This plugin provides a source ip based "authentication" for clients which are not able to authenticate themselves to MTA.</p>
+<h2>Motivation</h2>
+<p>Certain applications (eg. SAP) are not able to send emails with authentication. In this case to avoid setting up open relay one would have to allow mail receipt by source IP. While this option is available even on Microsoft Exchange (restrict mail connector access by source IP), it is not possible to enforce certain sender on the receipt side. That means, (eg.) SAP application server can send email in anyone's name. </p>
+<p>Since email communication within enterprise is highly trusted that is not a good idea: an attacker breaking into SAP application server can impersonate anyone within the domain. Too bad. </p>
+<p>There is two option: elevate SAP server's trust level to that of Active Directory's or create a controlled mail sending facility. This plugin is to solve this problem.</p>
+<h2>Example setup</h2>
+<p>Suppose we have two servers (server1 and server2) both hosting services not able to authenticate against AD. Server1 has to send email with noreply-app@example.com to example.com addresses while server2 has to send emails with nessus@example.com and syslog@example.com mails from to infosec@example.com. The network setup is like this:</p>
+<pre><code>server1 (192.168.100.1) ------+
+                              |----&gt; haraka (192.168.100.200) ----&gt; AD (192.168.10.10)
+server2 (192.168.100.2) ------+
+</code></pre>
+<h2>Configuration</h2>
+<p>To set up haraka for the example setup you should do the following:</p>
+<h4>Create a default haraka setup with</h4>
+<pre><code>haraka -i /path/to/harakatest
+</code></pre>
+<h4>Edit <code>config/plugins</code></h4>
+<pre><code>queue/smtp_proxy
+tls
+enforce_route_by_ip
+</code></pre>
+<h4>Edit ``config/smtp_proxy.ini</h4>
+<pre><code>host=192.168.10.10
+port=25
+enable_tls=1
+[auth]
+type=plain
+user=&lt;your Active Directory user name&gt;
+pass=&lt;your password&gt;
+</code></pre>
+<h4>Edit <code>config/enforce_route_by_ip.ini</code></h4>
+<pre><code>[domain]
+192.168.100.1=noreply-app@example.com
+192.168.100.2=nessus@example.com, syslog@example.com
+
+[rcpt_to]
+noreply-app@example.com=example.com
+nessus@example.com=infosec@example.com
+syslog@example.com=infosec@example.com
+</code></pre>
+<p>By setting <code>strict_mode=no</code> in <code>enforce_route_by_ip.ini</code> the plugin will allow email exchanges which are not configured. It is an optional unsafe mode. The strict mode is set to yes be default, of course.</p>
