@@ -4,10 +4,10 @@ exports.register = function() {
     var plugin = this;
 
     plugin.cfg = plugin.config.get('enforce_route_by_ip.ini');
-    plugin.cfg.strict_mode = plugin.cfg.main.strict_mode || 'yes';
-    if (!plugin.cfg.domain) {
-        if (plugin.cfg.strict_mode === 'yes') plugin.logerror(plugin, "No source IP is given, every email will be rejected");
-        else plugin.logwarn(plugin, "No source IP is given, plugin can be removed");
+    plugin.cfg.open_relay = plugin.cfg.main.open_relay || 'yes';
+    if (!plugin.cfg.mail_from) {
+        if (plugin.cfg.open_relay === 'yes') plugin.logerror(plugin, "No source IP is given, every email will be rejected");
+        else plugin.logwarn(plugin, "plugin will allow every sender");
     } 
     else {
         exports.load_rules();
@@ -20,11 +20,14 @@ exports.load_rules = function() {
     plugin.source_ips = {};
     var email_addrs = {};
     var ip;
-    Object.keys(plugin.cfg.domain).forEach(function(ip) {
-        plugin.source_ips[ip] = (plugin.cfg.domain[ip] || '').split(',').map(function(val) { 
+    Object.keys(plugin.cfg.mail_from).forEach(function(ip) {
+        plugin.source_ips[ip] = (plugin.cfg.mail_from[ip] || '').split(',').map(function(val) { 
             return val.trim();
         }).filter(function(email_addr) {
-            if (email_addr.search('@') == -1) {
+            if (email_addr.toLowerCase() === "any") {
+                plugin.loginfo('Every sender is accepted from host ' + ip);
+            }
+            else if (email_addr.search('@') == -1) {
                 plugin.logerror('Host ' +ip + "'s email address " + email_addr + " is not a valid, ignoring");
                 return false;
             }
@@ -35,10 +38,10 @@ exports.load_rules = function() {
 
     plugin.rcpt_to_addrs = {};
     plugin.rcpt_to_domains = {};
-    var email_addr;
+
     Object.keys(plugin.cfg.rcpt_to).forEach(function(email_addr) {
         if (!email_addrs.hasOwnProperty(email_addr))
-            plugin.logwarn('rcpt_to', email_addr + " is missing from domain definition, skipping");
+            plugin.logwarn('rcpt_to', email_addr + " is missing from mail_from section, skipping");
         else { 
             plugin.rcpt_to_addrs[email_addr] = plugin.cfg.rcpt_to[email_addr].split(',').map(function(val) { 
                 return val.trim();
@@ -52,8 +55,8 @@ exports.load_rules = function() {
             delete email_addrs[email_addr];
         }
     });
-    for (email_addr in email_addrs) {
-        plugin.logdebug(email_addr + ' can send to any address');
+    for (var email_addr in email_addrs) {
+        plugin.loginfo(email_addr + ' can send to any address');
     }
 };
 
@@ -69,7 +72,7 @@ exports.hook_connect = function(next, connection) {
     var plugin = this;
     var ip = connection.remote_ip;
 
-    if (!plugin.source_ips[ip] && plugin.strict_mode==='yes') {
+    if (!plugin.source_ips[ip] && plugin.open_relay !== 'yes') {
         next(DENY,ip + ' is not authorized');
         plugin.logerror(ip + ' is not authorized');
     }
@@ -100,7 +103,7 @@ exports.hook_rcpt = function(next, connection, to) {
         next(OK);
         return;
     }
-    if (plugin.strict_mode!=='yes') {
+    if (plugin.open_relay!=='yes' && plugin.source_ips[ip].indexOf('any')==-1) {
         plugin.logerror(addr + " is not allowed recepient at " + ip);
         next(DENY, addr + " is not allowed recepient at " + ip);
     }
@@ -114,7 +117,8 @@ exports.hook_mail = function(next, connection, from) {
     var ip = connection.remote_ip;
     var addr = from[0].address();
 
-    if (plugin.source_ips[ip] && plugin.source_ips[ip].indexOf(addr)==-1) {
+    plugin.loginfo("haha "+plugin.source_ips[ip].indexOf("any"));
+    if (plugin.source_ips[ip] && plugin.source_ips[ip].indexOf("any")==-1 && plugin.source_ips[ip].indexOf(addr)==-1) {
         next(DENY, addr + " is not allowed sender at " + ip);
         plugin.logerror(addr + " is not allowed sender at " + ip);
     }
