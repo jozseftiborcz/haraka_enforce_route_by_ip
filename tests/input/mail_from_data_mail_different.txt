@@ -1,0 +1,11 @@
+helo cilia
+MAIL FROM: sender1@example.com 
+RCPT TO: rcpt_to1@example.com
+DATA
+To: rcpt_to1@example.com
+From: different@example.com 
+Subject: mail with different "mail from" value from data's from field:
+
+Should not send
+.
+quit

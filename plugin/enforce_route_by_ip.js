@@ -1,12 +1,15 @@
 // enforce_route_by_ip
 //
+var addr_parser = require("address-rfc2822");
+
 exports.register = function() {
     var plugin = this;
 
     plugin.cfg = plugin.config.get('enforce_route_by_ip.ini');
-    plugin.cfg.open_relay = plugin.cfg.main.open_relay || 'yes';
+    plugin.cfg.open_relay = plugin.cfg.main.open_relay || 'no';
+    if (plugin.cfg.open_relay === 'yes') plugin.loginfo(plugin, "Working in open_relay mode");
     if (!plugin.cfg.mail_from) {
-        if (plugin.cfg.open_relay === 'yes') plugin.logerror(plugin, "No source IP is given, every email will be rejected");
+        if (plugin.cfg.open_relay !== 'yes') plugin.logerror(plugin, "No source IP is given, every email will be rejected");
         else plugin.logwarn(plugin, "plugin will allow every sender");
     } 
     else {
@@ -65,14 +68,14 @@ exports.is_domain = function(email_addr) {
 };
 
 exports.get_domain = function(email_addr) {
-    return email_addr.replace(/.*@/,"");
+    return addr_parser.parse(email_addr)[0].host();
 };
 
 exports.hook_connect = function(next, connection) {
     var plugin = this;
     var ip = connection.remote_ip;
 
-    if (!plugin.source_ips[ip] && plugin.open_relay !== 'yes') {
+    if (!plugin.source_ips[ip] && plugin.cfg.open_relay !== 'yes') {
         next(DENY,ip + ' is not authorized');
         plugin.logerror(ip + ' is not authorized');
     }
@@ -94,36 +97,62 @@ exports.allowed_rcpt_domain = function(mail_from, rcpt) {
 };
 
 exports.hook_rcpt = function(next, connection, to) {
+    if (exports.validate_rcpt(next, connection, to[0].address())) next(OK);
+};
+
+exports.validate_mail = function(next, connection, addr) {
     var plugin = this;
-    var addr = to[0].address();
+    var ip = connection.remote_ip;
+
+    if (plugin.source_ips[ip] && plugin.source_ips[ip].indexOf("any")==-1 && plugin.source_ips[ip].indexOf(addr)==-1) {
+        next(DENY, addr + " is not allowed sender at " + ip);
+        plugin.logerror(addr + " is not allowed sender at " + ip);
+        return false;
+    }
+    return true;
+};
+
+exports.hook_mail = function(next, connection, from) {
+    if (exports.validate_mail(next, connection, from[0].address())) next(OK); 
+};
+
+exports.hook_data_post = function(next, connection) {
+    var plugin = this;
+    var result = true;
+
+    ['From', 'Sender'].forEach(function(key) {
+        if (!result) return;
+        var values = connection.transaction.header.get_all(key);
+        values.forEach(function(value) {
+            addr_parser.parse(value).forEach(function(addr) {
+                if (addr.address.toLowerCase() !== connection.transaction.mail_from.original.toLowerCase()) {
+                    plugin.logerror(key + " field's value is not equal with envelope's value");
+                    next(DENY, key + " field's value is not equal with envelope's value");
+                    result = false;
+                }
+            });
+        });
+    });
+    if (!result) return;
+    addr_parser.parse(connection.transaction.header.get_all("CC")).forEach(function(addr) {
+        result = result && exports.validat_rcpt(next, connection, addr);
+    });
+    if (result) next(OK);
+};
+
+exports.validate_rcpt = function(next, connection, addr) {
+    var plugin = this;
     var ip = connection.remote_ip;
     var mail_from = connection.transaction.mail_from.original;
 
     if (exports.allowed_rcpt_to(mail_from, addr) || exports.allowed_rcpt_domain(mail_from, addr)) {
-        next(OK);
-        return;
+        return true;
     }
-    if (plugin.open_relay!=='yes' && plugin.source_ips[ip].indexOf('any')==-1) {
+    if (plugin.cfg.open_relay!=='yes' && plugin.source_ips[ip].indexOf('any')==-1) {
         plugin.logerror(addr + " is not allowed recepient at " + ip);
         next(DENY, addr + " is not allowed recepient at " + ip);
+        return false;
     }
-    else {
-        next(OK);
-    }
-};
-
-exports.hook_mail = function(next, connection, from) {
-    var plugin = this;
-    var ip = connection.remote_ip;
-    var addr = from[0].address();
-
-    plugin.loginfo("haha "+plugin.source_ips[ip].indexOf("any"));
-    if (plugin.source_ips[ip] && plugin.source_ips[ip].indexOf("any")==-1 && plugin.source_ips[ip].indexOf(addr)==-1) {
-        next(DENY, addr + " is not allowed sender at " + ip);
-        plugin.logerror(addr + " is not allowed sender at " + ip);
-    }
-    else {
-        next();
-    }
+    return true;
 };
 

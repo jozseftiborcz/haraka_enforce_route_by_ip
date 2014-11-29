@@ -47,7 +47,7 @@ To set up haraka for the example setup you should do the following:
     nessus@example.com=infosec@example.com
     syslog@example.com=infosec@example.com
 
-By setting ``open_relay=no`` in ``enforce_route_by_ip.ini`` the plugin will allow email exchanges for sources which are not configured. It is an optional unsafe mode. The strict mode is set to yes be default, of course.
+By setting ``open_relay=yes`` in ``enforce_route_by_ip.ini`` the plugin will allow email exchanges for sources which are not configured. It is an optional unsafe mode. The default value is no, of course.
 
 ``any`` is a special sender, which means any email addresses is accepted from given host. For ``any`` send one can define rcpt_to rules. In the following example from host 192.168.100.1 any mail_from address is accepted to gmail.com domain.
     [mail_from]
